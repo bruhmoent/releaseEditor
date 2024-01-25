@@ -7,23 +7,20 @@
 #include "tileMap.hpp"
 #include "tileData.hpp"
 #include "tileMaps.hpp"
-#include "tiles.hpp"
 #include "camera.hpp"
 
-//EXAMPLE BASIC IMPLEMENATION, NOT A GOOD PRACTICE TO USE SO MANY GLOBAL VARIABLES
+//EXAMPLE BASIC IMPLEMENATION, ITS NOT A GOOD PRACTICE TO USE SO MANY GLOBAL VARIABLES.
 sf::Vector2f gridSize(64, 64);
 sf::RenderWindow g_window(sf::VideoMode(800, 600), "Level Editor");
 Grid g_grid({ gridSize }, sf::Color(255, 255, 255, 128));
 HorizontalMenu<std::string> g_taskbar(400, 50, 20, sf::Color(202, 164, 144, 125), sf::Color::Black);
 Camera g_camera;
-Tiles g_tileManager;
 HorizontalMenu<std::string> g_toolbar(400, 50, 20, sf::Color(202, 164, 144, 125), sf::Color::Black);
 TileData g_tileData;
 PlacementManager g_placementManager;
 EditorLog g_editorLog(g_window, "assets/font.ttf");
-LevelData g_level(g_editorLog);
+LevelData g_level;
 TileMaps g_tileMaps;
-TileMap g_tileMap({ 64.f,64.f });
 
 int main()
 {
@@ -59,20 +56,20 @@ int main()
 		g_tileData.addTexturePath(id, tileData.getTexturePath(id));
 	}
 
+	TileMap g_tileMap(g_tileData, 3000, 2000, { 64.f,64.f });
+
 	g_toolbar.setPosition(500.f, 0.f);
-	g_taskbar.addButton("Save", "assets/saveIcon.png", [&levelSize]() { g_level.saveLevel("test", levelSize, gridSize, g_tileData, g_tileManager, g_tileMaps); });
-	g_taskbar.addButton("Load", "assets/loadIcon.png", [&levelSize]() { g_level.loadLevel("level.json", gridSize, levelSize, g_tileManager, g_tileData, g_tileMaps); });
+	g_taskbar.addButton("Save", "assets/saveIcon.png", [&levelSize]() { g_level.saveLevel("test", levelSize, gridSize, g_tileData, g_tileMaps); });
+	g_taskbar.addButton("Load", "assets/loadIcon.png", [&levelSize]() { g_level.loadLevel("level.json", gridSize, levelSize, g_tileData, g_tileMaps); });
 	g_toolbar.addButton("Button 1", "tile.png", [&tileID]() { tileID = 1; std::cout << "1\n"; });
 	g_toolbar.addButton("Button 2", "box.png", [&tileID]() { tileID = 2; std::cout << "2\n"; });
 	g_window.setFramerateLimit(60);
 
-	g_tileMap = TileMap({ 64.f, 64.f });
 	g_tileMaps.addTileMap(g_tileMap);
 	g_tileMaps.setActive(0);
 
-	TileMap temporary({ 32.f, 32.f });
+	TileMap temporary(g_tileData, 3000, 2000, { 32.f, 32.f });
 	g_tileMaps.addTileMap(temporary);
-	temporary.setGrid({ 32.f, 32.f });
 
 	while (g_window.isOpen())
 	{
@@ -122,41 +119,40 @@ int main()
 			else if (event.type == sf::Event::KeyReleased && event.key.code == sf::Keyboard::LShift) {
 				isShiftHeld = false;
 				isResizing = false;
-				g_placementManager.activeArea(g_tileData, tileID, g_tileManager, gridSize, levelSize, selectionRect, g_tileMaps);
-				g_tileManager.snapAllTilesToGrid(gridSize);
+				g_placementManager.activeArea(g_tileData, tileID, g_tileMaps, gridSize, levelSize, selectionRect);
 			}
 
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::M) {
 				sf::Vector2f initialPosition = g_window.mapPixelToCoords(sf::Mouse::getPosition(g_window));
-				g_placementManager.activeErase({ 64.f, 64.f }, g_tileManager);
+				g_placementManager.activeErase({ 64.f, 64.f }, g_tileMaps);
 			}
 
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::P) {
-				g_level.saveLevel("test", levelSize, gridSize, g_tileData, g_tileManager, g_tileMaps);
+				g_level.saveLevel("test", levelSize, gridSize, g_tileData, g_tileMaps);
 			}
 
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::L) {
 				g_tileMaps.setActive(1);
 				gridSize = g_tileMaps.getCurrentGridSize();
 				g_grid.gridSize = g_tileMaps.getCurrentGridSize();
-				std::cout << g_tileMaps.m_activeTileMapIndex;
+				std::cout << g_tileMaps.activeTileMapIndex;
 			}
-			
+
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::K) {
 				g_tileMaps.setActive(0);
 				gridSize = g_tileMaps.getCurrentGridSize();
 				g_grid.gridSize = g_tileMaps.getCurrentGridSize();
-				std::cout << g_tileMaps.m_activeTileMapIndex;
+				std::cout << g_tileMaps.activeTileMapIndex;
 			}
 
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::O) {
-				g_level.loadLevel("level.json", gridSize, levelSize, g_tileManager, g_tileData, g_tileMaps);
+				g_level.loadLevel("level.json", gridSize, levelSize, g_tileData, g_tileMaps);
 			}
 
 			if (event.type == sf::Event::KeyPressed && event.key.code == sf::Keyboard::Q)
 			{
 				sf::Vector2f initialPosition = g_window.mapPixelToCoords(sf::Mouse::getPosition(g_window));
-				g_placementManager.activeFill(g_tileData, tileID, g_tileManager, gridSize, levelSize, initialPosition, g_tileMaps);
+				g_placementManager.activeFill(g_tileData, tileID, g_tileMaps, gridSize, levelSize, initialPosition);
 			}
 
 			if (isResizing) {
@@ -172,7 +168,7 @@ int main()
 			else {
 				if (event.type == sf::Event::MouseButtonPressed && event.mouseButton.button == sf::Mouse::Left && !g_taskbar.isMouseInside(g_window) && !g_toolbar.isMouseInside(g_window)) {
 					sf::Vector2f mousePosition = g_window.mapPixelToCoords(sf::Vector2i(event.mouseButton.x, event.mouseButton.y));
-					g_placementManager.activeSingular(g_tileData, tileID, g_tileManager, mousePosition, gridSize, levelSize, g_tileMaps);
+					g_placementManager.activeSingular(g_tileData, tileID, g_tileMaps, mousePosition, gridSize, levelSize);
 				}
 			}
 		}
@@ -184,8 +180,7 @@ int main()
 			g_camera.viewFollow(g_window.mapPixelToCoords(sf::Mouse::getPosition(g_window)), g_window, 0.1f);
 		}
 
-		g_tileMaps.displayAllTiles(g_window);
-		g_tileMaps.displayLayering(g_window);
+		g_tileMaps.draw(g_window);
 
 		g_editorLog.update(deltaTime);
 		g_window.draw(g_editorLog.m_message);

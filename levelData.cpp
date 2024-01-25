@@ -1,176 +1,104 @@
 #include "levelData.hpp"
-#include "TileMaps.hpp"
-#include "TileMap.hpp"
-#include "editorLog.hpp"
-#include "json.hpp"
-#include "tileData.hpp"
-#include "tiles.hpp"
-#include "tile.hpp"
+#include <sstream>
+#include "jsonParser.hpp"
 
-void
-LevelData::saveLevel(const std::string& levelName, const sf::Vector2u& levelSize, const sf::Vector2f& gridSize, TileData& tileData, Tiles& tiles, TileMaps& tileMaps) {
+void LevelData::saveLevel(const std::string& levelName, const sf::Vector2u& levelSize, const sf::Vector2f& gridSize, TileData& tileData, TileMaps& tileMaps) {
+    nlohmann::json json;
 
-	if (tiles.m_tiles.empty()) {
-		m_editorLog.showMessage("Cannot save an empty level.");
-		return;
-	}
+    json["LevelName"] = levelName;
+    json["LevelSize"]["x"] = levelSize.x;
+    json["LevelSize"]["y"] = levelSize.y;
 
-	nlohmann::json json;
+    std::vector<nlohmann::json> tileMapData;
+    for (const TileMap* tileMap : tileMaps.m_tileMaps) {
+        nlohmann::json tileMapInfo;
+        tileMapInfo["Opacity"] = tileMap->opacity;
+        tileMapInfo["GridSize"]["x"] = tileMap->m_grid_size.x;
+        tileMapInfo["GridSize"]["y"] = tileMap->m_grid_size.y;
+        tileMapInfo["Width"] = tileMap->m_width;
+        tileMapInfo["Height"] = tileMap->m_height;
 
-	json["LevelName"] = levelName;
-	json["LevelSize"]["x"] = levelSize.x;
-	json["LevelSize"]["y"] = levelSize.y;
+        int estimatedWidth = static_cast<int>(levelSize.x / gridSize.x);
+        int estimatedHeight = static_cast<int>(levelSize.y / gridSize.y);
 
-	std::vector<nlohmann::json> tileMapData;
-	for (TileMap* tileMap : tileMaps.m_tileMaps) {
-		nlohmann::json tileMapInfo;
-		tileMapInfo["Opacity"] = tileMap->opacity;
-		tileMapInfo["GridSize"]["x"] = tileMap->m_gridSize.x;
-		tileMapInfo["GridSize"]["y"] = tileMap->m_gridSize.y;
+        std::vector<uint32_t> tileIDsFilled(estimatedWidth * estimatedHeight, 0);
 
-		std::vector<nlohmann::json> tileInfoData;
-		for (const Tile* tile : tiles.m_tiles) {
-			nlohmann::json tileInfo;
-			tileInfo["ID"] = tile->m_ID;
-			tileInfo["tileMapID"] = tile->m_onTileMapID;
-			tileInfo["Position"]["x"] = tile->m_position.x;
-			tileInfo["Position"]["y"] = tile->m_position.y;
-			tileInfoData.push_back(tileInfo);
-		}
+        for (const auto& tile : tileMap->m_tiles) {
+            int x = static_cast<int>(tile.position.x / gridSize.x);
+            int y = static_cast<int>(tile.position.y / gridSize.y);
 
-		std::vector<int> helperTileIDs;
-		for (const Tile* tile : tileMap->m_helperMapTiles) {
-			helperTileIDs.push_back(tile->m_ID);
-		}
-		tileMapInfo["HelperTiles"] = helperTileIDs;
-		tileMapInfo["TileMapTiles"] = tileInfoData;
+            if (x >= 0 && x < estimatedWidth && y >= 0 && y < estimatedHeight) {
+                int index = x + y * estimatedWidth;
+                tileIDsFilled[index] = tile.id;
+            }
+        }
 
-		tileMapData.push_back(tileMapInfo);
-	}
-	json["TileMaps"] = tileMapData;
+        std::string tilemapStr;
+        for (int y = 0; y < estimatedHeight; ++y) {
+            for (int x = 0; x < estimatedWidth; ++x) {
+                int index = x + y * estimatedWidth;
+                tilemapStr += std::to_string(tileIDsFilled[index]) + " ";
+            }
+            tilemapStr.pop_back();
+            tilemapStr += "\n";
+        }
 
-	std::vector<nlohmann::json> tileInfoData;
-	for (const Tile* tile : tiles.m_tiles) {
-		nlohmann::json tileInfo;
-		tileInfo["Position"]["x"] = tile->m_position.x;
-		tileInfo["Position"]["y"] = tile->m_position.y;
-		tileInfo["TileMapIndex"] = tile->m_onTileMapID;
+        tilemapStr.pop_back();
 
-		tileInfo["TextureID"] = tile->m_ID;
+        tileMapInfo["TileMapTiles"] = tilemapStr;
+        tileMapData.push_back(tileMapInfo);
+    }
+    json["TileMaps"] = tileMapData;
 
-		tileInfoData.push_back(tileInfo);
-	}
-	json["Tiles"] = tileInfoData;
-
-	m_editorLog.showMessage("Level saved succesfully.");
-	std::ofstream outputFile("level.json");
-	outputFile << json.dump(4);
-	outputFile.close();
+    std::ofstream outputFile("level.json", std::ios::trunc);
+    outputFile << json.dump(4);
+    outputFile.close();
 }
 
-void 
-LevelData::loadLevel(const std::string& filePath, const sf::Vector2f& gridSize, const sf::Vector2u& levelSize, Tiles& tiles, TileData& tileData, TileMaps& tileMaps)
-{
+void LevelData::loadLevel(const std::string& filePath, const sf::Vector2f& gridSize, sf::Vector2u& levelSize, TileData& tileData, TileMaps& tileMaps) {
+    for (TileMap* tileMap : tileMaps.m_tileMaps) {
+        tileMap->clearTiles();
+    }
 
-	if (filePath.substr(filePath.find_last_of('.') + 1) != "json") {
-		throw std::runtime_error("Invalid file format. Expected a JSON file.");
-	}
+    nlohmann::json json;
+    std::ifstream inputFile(filePath);
+    inputFile >> json;
+    inputFile.close();
 
-	for (TileMap* tileMap : tileMaps.m_tileMaps) {
-		for (Tile* tile : tileMap->m_helperMapTiles) {
-			delete tile;
-		}
-		tileMap->m_helperMapTiles.clear();
+    levelSize.x = json["LevelSize"]["x"];
+    levelSize.y = json["LevelSize"]["y"];
 
-		for (Tile* tile : tileMap->m_tileMapTiles) {
-			delete tile;
-		}
-		tileMap->m_tileMapTiles.clear();
-	}
+    const auto& tileMapsData = json["TileMaps"];
+    for (const auto& tileMapInfo : tileMapsData) {
+        TileMap tileMap(tileData, tileMapInfo["Width"], tileMapInfo["Height"], { tileMapInfo["GridSize"]["x"], tileMapInfo["GridSize"]["y"] });
 
-	if (!tiles.m_tiles.empty() && !tileMaps.m_tileMaps.empty()) {
-		tiles.m_tiles.clear();
-		tileMaps.m_tileMaps.clear();
-	}
+        tileMap.opacity = tileMapInfo["Opacity"];
 
-	nlohmann::json json;
-	std::ifstream inputFile(filePath);
-	inputFile >> json;
-	inputFile.close();
+        const auto& tilemapStr = tileMapInfo["TileMapTiles"];
+        std::istringstream iss(tilemapStr.get<std::string>());
+        std::vector<std::string> lines;
 
-	for (const auto& tileMapInfo : json["TileMaps"]) {
-		TileMap* tileMap = new TileMap({ tileMapInfo["GridSize"]["x"], tileMapInfo["GridSize"]["y"] });
-		tileMap->m_gridSize.x = tileMapInfo["GridSize"]["x"];
-		tileMap->m_gridSize.y = tileMapInfo["GridSize"]["y"];
-		tileMap->opacity = tileMapInfo["Opacity"];
+        for (std::string line; std::getline(iss, line, '\n'); ) {
+            lines.push_back(line);
+        }
 
-		tileMaps.m_tileMaps.push_back(tileMap);
-	}
+        int y = 0;
+        for (const auto& line : lines) {
+            std::istringstream lineStream(line);
+            int x = 0;
+            int tileID;
 
-	std::vector<TileMap*> loadedTileMaps;
-	std::map<int, int> tileMapIndexMap;
+            while (lineStream >> tileID) {
+                if (tileID != 0) {
+                    float xPos = x * gridSize.x;
+                    float yPos = y * gridSize.y;
+                    tileMap.addTile(tileID, { xPos, yPos });
+                }
+                x++;
+            }
+            y++;
+        }
 
-	for (const auto& tileMapInfo : json["TileMaps"]) {
-		TileMap* tileMap = new TileMap({ tileMapInfo["GridSize"]["x"], tileMapInfo["GridSize"]["y"] });
-		tileMap->m_gridSize.x = tileMapInfo["GridSize"]["x"];
-		tileMap->m_gridSize.y = tileMapInfo["GridSize"]["y"];
-		tileMap->opacity = tileMapInfo["Opacity"];
-
-		loadedTileMaps.push_back(tileMap);
-	}
-
-	for (int i = 0; i < loadedTileMaps.size(); ++i) {
-		tileMapIndexMap[i] = i;
-	}
-
-	for (const auto& tileMapInfo : json["TileMaps"]) {
-		if (tileMapInfo.contains("TileMapTiles") && !tileMapInfo["TileMapTiles"].empty()) {
-			for (const auto& tileInfo : tileMapInfo["TileMapTiles"]) {
-				if (tileInfo.contains("tileMapID") && tileInfo["tileMapID"].is_number()) {
-					int tileMapID = tileInfo["tileMapID"].get<int>();
-
-					auto it = tileMapIndexMap.find(tileMapID);
-					if (it != tileMapIndexMap.end()) {
-						int tileMapIndex = it->second;
-
-						float posX = tileInfo["Position"]["x"].get<float>();
-						float posY = tileInfo["Position"]["y"].get<float>();
-						int id = tileInfo["ID"];
-
-						if (tileMapIndex >= 0 && tileMapIndex < loadedTileMaps.size()) {
-							TileMap* currentTileMap = loadedTileMaps[tileMapIndex];
-							tiles.addTileToTileMap(tileData, id, sf::Vector2f(posX, posY), currentTileMap->m_gridSize, levelSize, tileMaps, tileMapIndex);
-						}
-						else {
-							std::cout << "Invalid tile map index: " << tileMapIndex << std::endl;
-							std::cout << "loadedTileMaps.size(): " << loadedTileMaps.size() << std::endl;
-						}
-					}
-					else {
-						std::cout << "Invalid or missing tile map ID: " << tileMapID << std::endl;
-					}
-				}
-				else {
-					std::cout << "Invalid or missing 'tileMapID' value in tile info." << std::endl;
-				}
-			}
-		}
-		else {
-			std::cout << "Empty or missing 'TileMapTiles' array in tile map." << std::endl;
-		}
-	}
-
-	m_editorLog.showMessage("Level loaded successfully.");
-
-}
-
-void
-LevelData::truncateLevel(const std::string& filePath) {
-	if (filePath.substr(filePath.find_last_of('.') + 1) != "json") {
-		throw std::runtime_error("Invalid file format. Expected a JSON file.");
-	}
-
-	std::ofstream saveFile(filePath, std::ios::trunc);
-	saveFile.close();
-	std::remove(filePath.c_str());
+        tileMaps.addTileMap(tileMap);
+    }
 }

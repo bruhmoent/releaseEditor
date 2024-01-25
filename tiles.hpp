@@ -1,37 +1,20 @@
-#include "directives.hpp"
-
 #ifndef TILES_HPP
 #define TILES_HPP
 
-struct TileMaps;
-struct TileData;
-struct Tile;
+#include <SFML/Graphics.hpp>
+#include "tileData.hpp"
+#include "tileMaps.hpp"
 
-struct
-Tiles {
+class Tiles {
+public:
+    void addTileByID(int id, const sf::Vector2f& mousePosition, const sf::Vector2f& gridSize, const sf::Vector2u& levelSize, TileMaps& tileMaps);
+    void addTileToTileMap(int id, const sf::Vector2f& mousePosition, const sf::Vector2f& gridSize, const sf::Vector2u& levelSize, TileMaps& tileMaps, int tileMapID);
+    void removeTile(const sf::Vector2f& position);
+    void snapAllTilesToGrid(const sf::Vector2f& gridSize);
+    bool isPositionOccupied(const sf::Vector2f& position) const;
 
-    std::vector<Tile*> m_tiles;
-
-    //Add a tile by ID
-    void
-    addTileByID(const TileData& tileData, int id, const sf::Vector2f& mousePosition, const sf::Vector2f& gridSize, const sf::Vector2u& levelSize, TileMaps& tileMaps, int tileMapID);
-
-    //Add a tile to a tilemap
-    void
-    addTileToTileMap(const TileData& tileData, int id, const sf::Vector2f& mousePosition, const sf::Vector2f& gridSize, const sf::Vector2u& levelSize, TileMaps& tileMaps, int tileMapID);
-
-    //Remove tile
-    void
-    removeTile(const sf::Vector2f& position);
-
-    //Snaps tiles to a grid
-    void
-    snapAllTilesToGrid(const sf::Vector2f& gridSize);
-
-    //Iterate though the tiles vector and check for position overlap
-    bool
-    isPositionOccupied(const sf::Vector2f& position) const;
-
+private:
+    std::vector<sf::Sprite> m_tiles;
 };
 
-#endif
+#endif // TILES_HPP
